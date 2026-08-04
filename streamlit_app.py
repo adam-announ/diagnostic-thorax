@@ -64,21 +64,25 @@ st.markdown("""
         border-radius:14px; padding:1.1rem 1.4rem; margin-bottom:0.8rem;
         box-shadow:0 3px 14px rgba(232,80,58,0.05);
         display:flex; justify-content:space-between; align-items:center;}
-    .carte .nom {color:#1a1a2e; font-weight:700; font-size:1.1rem;}
-    .carte .pct {color:#e8503a; font-weight:800; font-size:1.2rem;}
+    .carte .nom {color:#1a1a2e !important; font-weight:700; font-size:1.1rem;}
+    .carte .pct {color:#e8503a !important; font-weight:800; font-size:1.2rem;}
 
     .stButton>button, .stDownloadButton>button {background:#e8503a !important; color:#fff !important;
         border:none !important; border-radius:30px !important; padding:0.65rem 2rem !important;
         font-weight:600 !important; font-family:'Poppins',sans-serif !important;
         box-shadow:0 4px 14px rgba(232,80,58,0.3) !important;}
     .stButton>button:hover, .stDownloadButton>button:hover {background:#d13f2a !important;}
-    .stProgress > div > div > div {background:linear-gradient(90deg,#e8503a,#f4a698) !important;}
     [data-testid="stFileUploader"] {background:#fdf6f4; border:2px dashed #f4a698;
         border-radius:18px; padding:1.2rem;}
     .avert {background:#fdf6f4; border-left:4px solid #e8503a; padding:1.1rem 1.4rem;
         border-radius:12px; font-size:0.85rem; color:#8a3a2a; margin-top:2.5rem;}
     .foot {text-align:center; color:#9ca3af; font-size:0.8rem; margin-top:2rem; padding:1.5rem;
         border-top:1px solid #f0e6e3;}
+
+    /* --- correction texte invisible --- */
+    .rap, .rap * {color:#1a1a2e !important;}
+    .rap td, .rap th {color:#374151 !important;}
+    .rap .badge-niv {color:#ffffff !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -169,10 +173,13 @@ def rapport_html(positifs, ordre, est_rx):
         elif p >= 0.5: coul, niv = "#e8503a", "Modérée"
         else: coul, niv = "#9ca3af", "Faible"
         signal = "background:#fdeeeb;" if p >= SEUILS.get(n,0.5) else ""
-        lignes += (f"<tr style='{signal}'><td style='padding:8px 14px;border-bottom:1px solid #f0e6e3;'>{FR[n]}</td>"
-                   f"<td style='padding:8px 14px;border-bottom:1px solid #f0e6e3;text-align:right;font-weight:700;color:{coul};'>{p*100:.1f}%</td>"
-                   f"<td style='padding:8px 14px;border-bottom:1px solid #f0e6e3;text-align:center;'>"
-                   f"<span style='background:{coul};color:#fff;padding:2px 10px;border-radius:20px;font-size:0.75rem;'>{niv}</span></td></tr>")
+        lignes += (f"<tr style='{signal}'><td style='padding:9px 14px;border-bottom:1px solid #f0e6e3;"
+                   f"color:#1a1a2e;font-weight:500;'>{FR[n]}</td>"
+                   f"<td style='padding:9px 14px;border-bottom:1px solid #f0e6e3;text-align:right;"
+                   f"font-weight:700;color:{coul};'>{p*100:.1f}%</td>"
+                   f"<td style='padding:9px 14px;border-bottom:1px solid #f0e6e3;text-align:center;'>"
+                   f"<span class='badge-niv' style='background:{coul};padding:3px 12px;"
+                   f"border-radius:20px;font-size:0.75rem;font-weight:600;'>{niv}</span></td></tr>")
     concl = ""
     if positifs:
         for n,p in positifs:
@@ -185,7 +192,7 @@ def rapport_html(positifs, ordre, est_rx):
                   "border-radius:6px;margin:10px 0;color:#7a4b00;font-size:0.85rem;'>"
                   "⚠️ Image possiblement non-radiographique — fiabilité réduite.</div>")
     html = f"""
-    <div style='background:#fff;border:1px solid #f0e6e3;border-radius:16px;padding:2rem;
+    <div class='rap' style='background:#fff;border:1px solid #f0e6e3;border-radius:16px;padding:2rem;
         box-shadow:0 6px 24px rgba(0,0,0,0.05);font-family:Poppins,sans-serif;'>
       <div style='border-bottom:3px solid #e8503a;padding-bottom:1rem;margin-bottom:1.2rem;'>
         <div style='font-size:1.2rem;font-weight:800;color:#1a1a2e;'>Hôpital Universitaire International Cheikh Zaïd</div>
@@ -204,9 +211,9 @@ def rapport_html(positifs, ordre, est_rx):
       <div style='font-weight:700;color:#1a1a2e;margin:1.2rem 0 0.5rem 0;'>Détail des 14 pathologies</div>
       <table style='width:100%;border-collapse:collapse;font-size:0.88rem;'>
         <tr style='background:#f9fafb;'>
-          <th style='padding:8px 14px;text-align:left;color:#6b7280;'>Pathologie</th>
-          <th style='padding:8px 14px;text-align:right;color:#6b7280;'>Probabilité</th>
-          <th style='padding:8px 14px;text-align:center;color:#6b7280;'>Suspicion</th></tr>
+          <th style='padding:9px 14px;text-align:left;color:#6b7280;'>Pathologie</th>
+          <th style='padding:9px 14px;text-align:right;color:#6b7280;'>Probabilité</th>
+          <th style='padding:9px 14px;text-align:center;color:#6b7280;'>Suspicion</th></tr>
         {lignes}
       </table>
       <div style='background:#fdf6f4;border-radius:10px;padding:12px 16px;margin-top:1.5rem;
@@ -280,10 +287,23 @@ if fichier is not None:
     else:
         st.success("✅ Aucune anomalie detectee au-dessus du seuil de confiance.")
 
-    st.markdown("**Top 5 des probabilites**")
+    # ---------- TOP 5 (barres personnalisees) ----------
+    st.markdown("<div class='sect'>Top 5 des probabilités</div>", unsafe_allow_html=True)
+    top5 = ""
     for n,p in ordre[:5]:
-        st.write(f"{FR[n]} — {p*100:.1f}%"); st.progress(float(p))
+        larg = int(p*100)
+        coul = "#c0392b" if p>0.7 else "#e8503a" if p>=0.5 else "#f4a698"
+        top5 += (f"<div style='margin-bottom:14px;'>"
+                 f"<div style='display:flex;justify-content:space-between;margin-bottom:5px;'>"
+                 f"<span style='color:#1a1a2e;font-weight:600;font-size:0.95rem;'>{FR[n]}</span>"
+                 f"<span style='color:{coul};font-weight:700;'>{p*100:.1f}%</span></div>"
+                 f"<div style='background:#f0e6e3;border-radius:20px;height:9px;overflow:hidden;'>"
+                 f"<div style='background:linear-gradient(90deg,{coul},#f4a698);width:{larg}%;"
+                 f"height:100%;border-radius:20px;'></div></div></div>")
+    st.markdown(f"<div class='rap' style='background:#fff;border:1px solid #f0e6e3;"
+                f"border-radius:16px;padding:1.5rem;'>{top5}</div>", unsafe_allow_html=True)
 
+    # ---------- COMPTE-RENDU ----------
     st.markdown("<div class='sect'>Compte-rendu médical</div>", unsafe_allow_html=True)
     html_rap, ref = rapport_html(positifs, ordre, rx_ok)
     txt_rap, _ = rapport_texte(positifs, ordre, rx_ok)
