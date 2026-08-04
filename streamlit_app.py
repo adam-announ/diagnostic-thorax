@@ -30,10 +30,9 @@ st.markdown("""
     #MainMenu, footer, header {visibility:hidden;}
     .block-container {padding-top:1rem; max-width:1200px;}
 
-    /* HEADER */
     .hdr {display:flex; align-items:center; justify-content:space-between;
         padding:1rem 1.5rem; background:#fff; border-radius:0 0 16px 16px;
-        box-shadow:0 2px 20px rgba(0,0,0,0.04); margin-bottom:0;}
+        box-shadow:0 2px 20px rgba(0,0,0,0.04);}
     .hdr-logo {display:flex; align-items:center; gap:12px;}
     .hdr-logo .tri {color:#e8503a; font-size:1.8rem;}
     .hdr-logo .txt {line-height:1.1;}
@@ -43,10 +42,8 @@ st.markdown("""
     .hdr-urg .u1 {font-size:0.62rem; color:#e8503a; font-weight:700; letter-spacing:1px;}
     .hdr-urg .u2 {font-size:0.95rem; color:#1a1a2e; font-weight:800;}
 
-    /* HERO */
     .hero {background:linear-gradient(135deg,#fdf6f4 0%,#ffffff 60%);
-        border-radius:24px; padding:3rem 2.5rem; margin:1.5rem 0;
-        border:1px solid #f5e9e6;}
+        border-radius:24px; padding:3rem 2.5rem; margin:1.5rem 0; border:1px solid #f5e9e6;}
     .hero .badge {display:inline-block; background:#fff; border:1px solid #f4c9bf;
         color:#e8503a; font-weight:600; padding:0.45rem 1.1rem;
         border-radius:30px; font-size:0.82rem; margin-bottom:1.5rem;}
@@ -109,7 +106,7 @@ st.markdown("""
   <span class='badge'>● Systeme d'aide au diagnostic radiologique</span>
   <h1>Diagnostic <span class='r'>Radiologique</span><br>assiste par Intelligence Artificielle</h1>
   <p>Detection automatique de 14 pathologies thoraciques a partir d'une radiographie du thorax.
-     Analyse en quelques secondes, avec carte d'attention (Grad-CAM) et rapport medical telechargeable.</p>
+     Analyse en quelques secondes, avec carte d'attention (Grad-CAM) et compte-rendu medical telechargeable.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -163,42 +160,82 @@ def gradcam(arr, idx):
     h = np.maximum(tf.reduce_sum(co[0]*w, -1).numpy(), 0)
     return cv2.resize(h/(h.max()+1e-8),(IMG_SIZE,IMG_SIZE))
 
-def rapport(positifs, ordre, est_rx):
+def rapport_html(positifs, ordre, est_rx):
+    d = datetime.now().strftime("%d/%m/%Y à %H:%M")
+    ref = "RX-"+datetime.now().strftime("%Y%m%d-%H%M%S")
+    lignes = ""
+    for n,p in ordre:
+        if p > 0.7: coul, niv = "#c0392b", "Élevée"
+        elif p >= 0.5: coul, niv = "#e8503a", "Modérée"
+        else: coul, niv = "#9ca3af", "Faible"
+        signal = "background:#fdeeeb;" if p >= SEUILS.get(n,0.5) else ""
+        lignes += (f"<tr style='{signal}'><td style='padding:8px 14px;border-bottom:1px solid #f0e6e3;'>{FR[n]}</td>"
+                   f"<td style='padding:8px 14px;border-bottom:1px solid #f0e6e3;text-align:right;font-weight:700;color:{coul};'>{p*100:.1f}%</td>"
+                   f"<td style='padding:8px 14px;border-bottom:1px solid #f0e6e3;text-align:center;'>"
+                   f"<span style='background:{coul};color:#fff;padding:2px 10px;border-radius:20px;font-size:0.75rem;'>{niv}</span></td></tr>")
+    concl = ""
+    if positifs:
+        for n,p in positifs:
+            concl += f"<li style='margin-bottom:6px;'><b>{FR[n]}</b> — {p*100:.1f}% de confiance</li>"
+    else:
+        concl = "<li>Aucune pathologie détectée au-dessus des seuils. Radiographie sans anomalie signalée.</li>"
+    alerte = ""
+    if not est_rx:
+        alerte = ("<div style='background:#fff4e5;border-left:4px solid #ff9800;padding:8px 14px;"
+                  "border-radius:6px;margin:10px 0;color:#7a4b00;font-size:0.85rem;'>"
+                  "⚠️ Image possiblement non-radiographique — fiabilité réduite.</div>")
+    html = f"""
+    <div style='background:#fff;border:1px solid #f0e6e3;border-radius:16px;padding:2rem;
+        box-shadow:0 6px 24px rgba(0,0,0,0.05);font-family:Poppins,sans-serif;'>
+      <div style='border-bottom:3px solid #e8503a;padding-bottom:1rem;margin-bottom:1.2rem;'>
+        <div style='font-size:1.2rem;font-weight:800;color:#1a1a2e;'>Hôpital Universitaire International Cheikh Zaïd</div>
+        <div style='color:#6b7280;font-size:0.9rem;'>Service d'Imagerie Médicale — Unité d'Intelligence Artificielle</div>
+        <div style='color:#e8503a;font-weight:700;margin-top:6px;'>COMPTE-RENDU D'AIDE AU DIAGNOSTIC RADIOLOGIQUE</div>
+      </div>
+      <table style='width:100%;font-size:0.9rem;color:#374151;margin-bottom:1rem;'>
+        <tr><td style='padding:3px 0;'><b>Référence</b></td><td>{ref}</td>
+            <td style='padding:3px 0;'><b>Date</b></td><td>{d}</td></tr>
+        <tr><td style='padding:3px 0;'><b>Examen</b></td><td>Radiographie thoracique frontale</td>
+            <td style='padding:3px 0;'><b>Modèle IA</b></td><td>DenseNet121 (AUC 0.77)</td></tr>
+      </table>
+      {alerte}
+      <div style='font-weight:700;color:#1a1a2e;margin:1rem 0 0.5rem 0;'>Conclusion de l'analyse</div>
+      <ul style='color:#374151;font-size:0.92rem;'>{concl}</ul>
+      <div style='font-weight:700;color:#1a1a2e;margin:1.2rem 0 0.5rem 0;'>Détail des 14 pathologies</div>
+      <table style='width:100%;border-collapse:collapse;font-size:0.88rem;'>
+        <tr style='background:#f9fafb;'>
+          <th style='padding:8px 14px;text-align:left;color:#6b7280;'>Pathologie</th>
+          <th style='padding:8px 14px;text-align:right;color:#6b7280;'>Probabilité</th>
+          <th style='padding:8px 14px;text-align:center;color:#6b7280;'>Suspicion</th></tr>
+        {lignes}
+      </table>
+      <div style='background:#fdf6f4;border-radius:10px;padding:12px 16px;margin-top:1.5rem;
+          font-size:0.8rem;color:#8a3a2a;'>
+        <b>Avertissement.</b> Ce compte-rendu est généré par un système d'intelligence artificielle
+        à visée d'aide au pré-signalement. Il ne constitue pas un diagnostic médical et ne remplace pas
+        l'interprétation d'un médecin radiologue. La validation par un praticien qualifié est requise.
+      </div>
+    </div>
+    """
+    return html, ref
+
+def rapport_texte(positifs, ordre, est_rx):
     d = datetime.now().strftime("%d/%m/%Y a %H:%M")
     ref = "RX-"+datetime.now().strftime("%Y%m%d-%H%M%S")
-    t  = "#"*60+"\n"
-    t += "   HOPITAL UNIVERSITAIRE INTERNATIONAL CHEIKH ZAID\n"
-    t += "   Service d'Imagerie Medicale - Unite IA\n"
-    t += "   RAPPORT D'AIDE AU DIAGNOSTIC RADIOLOGIQUE\n"
-    t += "#"*60+"\n\n"
-    t += f"Reference   : {ref}\n"
-    t += f"Date        : {d}\n"
-    t += f"Modele IA   : DenseNet121 (NIH ChestX-ray14, AUC moyen 0.77)\n"
-    t += f"Type examen : Radiographie thoracique frontale\n"
-    if not est_rx:
-        t += "ALERTE      : image possiblement non-radiographique (fiabilite reduite)\n"
-    t += "\n"+"="*60+"\n  CONCLUSION DE L'ANALYSE\n"+"="*60+"\n\n"
+    t  = "HOPITAL UNIVERSITAIRE INTERNATIONAL CHEIKH ZAID\n"
+    t += "Service d'Imagerie Medicale - Unite IA\n"
+    t += "COMPTE-RENDU D'AIDE AU DIAGNOSTIC RADIOLOGIQUE\n\n"
+    t += f"Reference : {ref}\nDate      : {d}\n"
+    t += "Examen    : Radiographie thoracique frontale\n"
+    t += "Modele IA : DenseNet121 (AUC 0.77)\n\n"
+    t += "CONCLUSION\n"
     if positifs:
-        t += "Pathologie(s) signalee(s) au-dessus du seuil de confiance :\n\n"
-        for n,p in positifs:
-            niv = "ELEVEE" if p>0.7 else "MODEREE" if p>0.5 else "FAIBLE"
-            t += f"   [+] {FR[n]:<26} {p*100:5.1f}%   (suspicion {niv})\n"
-    else:
-        t += "   Aucune pathologie detectee au-dessus des seuils de confiance.\n"
-        t += "   Radiographie sans anomalie signalee par le systeme.\n"
-    t += "\n"+"="*60+"\n  DETAIL COMPLET DES 14 PATHOLOGIES\n"+"="*60+"\n\n"
-    for n,p in ordre:
-        barre = "#"*int(p*20) + "-"*(20-int(p*20))
-        t += f"   {FR[n]:<26} |{barre}| {p*100:5.1f}%\n"
-    t += "\n"+"#"*60+"\n"
-    t += "  AVERTISSEMENT MEDICAL\n"+"#"*60+"\n"
-    t += "  Ce rapport est genere par un systeme d'intelligence\n"
-    t += "  artificielle a but d'aide au pre-signalement et de\n"
-    t += "  demonstration pedagogique. Il ne constitue PAS un\n"
-    t += "  diagnostic medical valide et ne remplace en aucun cas\n"
-    t += "  l'interpretation d'un medecin radiologue qualifie.\n"
-    t += "  Aucune decision clinique ne doit reposer sur ce document.\n"
-    t += "#"*60+"\n"
+        for n,p in positifs: t += f"  - {FR[n]} : {p*100:.1f}%\n"
+    else: t += "  Aucune anomalie au-dessus du seuil.\n"
+    t += "\nDETAIL DES 14 PATHOLOGIES\n"
+    for n,p in ordre: t += f"  {FR[n]:<26} {p*100:5.1f}%\n"
+    t += "\nAvertissement : aide au pre-signalement. Validation par un\n"
+    t += "radiologue requise. Ne constitue pas un diagnostic medical.\n"
     return t, ref
 
 # ---------------- UPLOAD ----------------
@@ -247,25 +284,27 @@ if fichier is not None:
     for n,p in ordre[:5]:
         st.write(f"{FR[n]} — {p*100:.1f}%"); st.progress(float(p))
 
-    st.markdown("<div class='sect'>📄 Rapport medical</div>", unsafe_allow_html=True)
-    txt, ref = rapport(positifs, ordre, rx_ok)
-    st.code(txt, language=None)
+    st.markdown("<div class='sect'>Compte-rendu médical</div>", unsafe_allow_html=True)
+    html_rap, ref = rapport_html(positifs, ordre, rx_ok)
+    txt_rap, _ = rapport_texte(positifs, ordre, rx_ok)
+    st.markdown(html_rap, unsafe_allow_html=True)
+    st.write("")
     d1,d2 = st.columns(2)
-    d1.download_button("⬇️ Telecharger (.txt)", txt,
+    d1.download_button("⬇️ Télécharger le compte-rendu (.txt)", txt_rap,
         file_name=f"{ref}.txt", mime="text/plain", use_container_width=True)
     try:
         from fpdf import FPDF
         pdf = FPDF(); pdf.add_page(); pdf.set_font("Courier", size=9)
-        for l in txt.split("\n"):
-            pdf.cell(0,4.5,l.encode('latin-1','replace').decode('latin-1'), ln=1)
-        d2.download_button("⬇️ Telecharger (.pdf)", pdf.output(dest='S').encode('latin-1'),
+        for l in txt_rap.split("\n"):
+            pdf.cell(0,5,l.encode('latin-1','replace').decode('latin-1'), ln=1)
+        d2.download_button("⬇️ Télécharger le compte-rendu (.pdf)", pdf.output(dest='S').encode('latin-1'),
             file_name=f"{ref}.pdf", mime="application/pdf", use_container_width=True)
     except Exception:
         d2.info("PDF : ajoutez 'fpdf2' au requirements.txt")
 
 st.markdown("<div class='avert'>⚠️ <b>Avertissement medical.</b> Ce systeme est un outil d'aide au "
-            "pre-signalement a but pedagogique. Il ne constitue pas un dispositif medical valide et ne "
-            "remplace en aucun cas l'interpretation d'un radiologue. Aucune decision clinique ne doit "
-            "reposer sur ce resultat.</div>", unsafe_allow_html=True)
-st.markdown("<div class='foot'>Hopital Universitaire International Cheikh Zaid · Unite IA Imagerie "
-            "Medicale · Projet de stage</div>", unsafe_allow_html=True)
+            "pre-signalement. Il ne constitue pas un dispositif medical valide et ne remplace en aucun "
+            "cas l'interpretation d'un radiologue. La validation par un praticien qualifie est requise "
+            "pour toute decision clinique.</div>", unsafe_allow_html=True)
+st.markdown("<div class='foot'>Hôpital Universitaire International Cheikh Zaïd · "
+            "Unité d'Intelligence Artificielle · Service d'Imagerie Médicale</div>", unsafe_allow_html=True)
