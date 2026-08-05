@@ -60,13 +60,6 @@ st.markdown("""
         display:flex; align-items:center; gap:12px;}
     .sect::before {content:''; width:6px; height:26px; background:#e8503a; border-radius:3px;}
 
-    .carte {background:#fff; border:1px solid #f0e6e3; border-left:5px solid #e8503a;
-        border-radius:14px; padding:1.1rem 1.4rem; margin-bottom:0.8rem;
-        box-shadow:0 3px 14px rgba(232,80,58,0.05);
-        display:flex; justify-content:space-between; align-items:center;}
-    .carte .nom {color:#1a1a2e !important; font-weight:700; font-size:1.1rem;}
-    .carte .pct {color:#e8503a !important; font-weight:800; font-size:1.2rem;}
-
     .stButton>button, .stDownloadButton>button {background:#e8503a !important; color:#fff !important;
         border:none !important; border-radius:30px !important; padding:0.65rem 2rem !important;
         font-weight:600 !important; font-family:'Poppins',sans-serif !important;
@@ -79,10 +72,11 @@ st.markdown("""
     .foot {text-align:center; color:#9ca3af; font-size:0.8rem; margin-top:2rem; padding:1.5rem;
         border-top:1px solid #f0e6e3;}
 
-    /* --- correction texte invisible --- */
     .rap, .rap * {color:#1a1a2e !important;}
     .rap td, .rap th {color:#374151 !important;}
     .rap .badge-niv {color:#ffffff !important;}
+    .diag, .diag * {color:#1a1a2e !important;}
+    .diag .badge-niv, .diag .gros {color:inherit !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -104,7 +98,6 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ---------------- HERO ----------------
 st.markdown("""
 <div class='hero'>
   <span class='badge'>● Systeme d'aide au diagnostic radiologique</span>
@@ -164,14 +157,33 @@ def gradcam(arr, idx):
     h = np.maximum(tf.reduce_sum(co[0]*w, -1).numpy(), 0)
     return cv2.resize(h/(h.max()+1e-8),(IMG_SIZE,IMG_SIZE))
 
+def evaluer(ordre):
+    """Retourne (niveau, couleur, message) pour le diagnostic principal."""
+    n1, p1 = ordre[0]; n2, p2 = ordre[1]
+    ecart = p1 - p2
+    if p1 >= 0.70 and ecart >= 0.15:
+        return ("Suspicion élevée", "#c0392b",
+                "Une seule pathologie se détache nettement. Résultat cohérent.")
+    if p1 >= SEUILS.get(n1,0.5) and ecart >= 0.10:
+        return ("Suspicion modérée", "#e8503a",
+                "Orientation probable, à confirmer par un radiologue.")
+    if p1 >= SEUILS.get(n1,0.5):
+        return ("Résultat non discriminant", "#f39c12",
+                f"Le modèle ne tranche pas clairement : {FR[n2]} atteint {p2*100:.1f}%, "
+                f"un score proche. Lecture humaine indispensable.")
+    return ("Aucune anomalie signalée", "#27ae60",
+            "Aucune pathologie au-dessus du seuil de confiance.")
+
 def rapport_html(positifs, ordre, est_rx):
     d = datetime.now().strftime("%d/%m/%Y à %H:%M")
     ref = "RX-"+datetime.now().strftime("%Y%m%d-%H%M%S")
+    niv, coul_niv, msg = evaluer(ordre)
+    n1, p1 = ordre[0]
     lignes = ""
     for n,p in ordre:
-        if p > 0.7: coul, niv = "#c0392b", "Élevée"
-        elif p >= 0.5: coul, niv = "#e8503a", "Modérée"
-        else: coul, niv = "#9ca3af", "Faible"
+        if p > 0.7: coul, lab = "#c0392b", "Élevée"
+        elif p >= 0.5: coul, lab = "#e8503a", "Modérée"
+        else: coul, lab = "#9ca3af", "Faible"
         signal = "background:#fdeeeb;" if p >= SEUILS.get(n,0.5) else ""
         lignes += (f"<tr style='{signal}'><td style='padding:9px 14px;border-bottom:1px solid #f0e6e3;"
                    f"color:#1a1a2e;font-weight:500;'>{FR[n]}</td>"
@@ -179,19 +191,13 @@ def rapport_html(positifs, ordre, est_rx):
                    f"font-weight:700;color:{coul};'>{p*100:.1f}%</td>"
                    f"<td style='padding:9px 14px;border-bottom:1px solid #f0e6e3;text-align:center;'>"
                    f"<span class='badge-niv' style='background:{coul};padding:3px 12px;"
-                   f"border-radius:20px;font-size:0.75rem;font-weight:600;'>{niv}</span></td></tr>")
-    concl = ""
-    if positifs:
-        for n,p in positifs:
-            concl += f"<li style='margin-bottom:6px;'><b>{FR[n]}</b> — {p*100:.1f}% de confiance</li>"
-    else:
-        concl = "<li>Aucune pathologie détectée au-dessus des seuils. Radiographie sans anomalie signalée.</li>"
+                   f"border-radius:20px;font-size:0.75rem;font-weight:600;'>{lab}</span></td></tr>")
     alerte = ""
     if not est_rx:
         alerte = ("<div style='background:#fff4e5;border-left:4px solid #ff9800;padding:8px 14px;"
                   "border-radius:6px;margin:10px 0;color:#7a4b00;font-size:0.85rem;'>"
                   "⚠️ Image possiblement non-radiographique — fiabilité réduite.</div>")
-    html = f"""
+    return f"""
     <div class='rap' style='background:#fff;border:1px solid #f0e6e3;border-radius:16px;padding:2rem;
         box-shadow:0 6px 24px rgba(0,0,0,0.05);font-family:Poppins,sans-serif;'>
       <div style='border-bottom:3px solid #e8503a;padding-bottom:1rem;margin-bottom:1.2rem;'>
@@ -206,9 +212,15 @@ def rapport_html(positifs, ordre, est_rx):
             <td style='padding:3px 0;'><b>Modèle IA</b></td><td>DenseNet121 (AUC 0.77)</td></tr>
       </table>
       {alerte}
-      <div style='font-weight:700;color:#1a1a2e;margin:1rem 0 0.5rem 0;'>Conclusion de l'analyse</div>
-      <ul style='color:#374151;font-size:0.92rem;'>{concl}</ul>
-      <div style='font-weight:700;color:#1a1a2e;margin:1.2rem 0 0.5rem 0;'>Détail des 14 pathologies</div>
+      <div style='font-weight:700;color:#1a1a2e;margin:1rem 0 0.5rem 0;'>Orientation principale</div>
+      <div style='background:#fdf6f4;border-radius:10px;padding:14px 18px;'>
+        <span style='font-size:1.15rem;font-weight:700;color:#1a1a2e;'>{FR[n1]}</span>
+        <span style='color:{coul_niv};font-weight:800;margin-left:10px;'>{p1*100:.1f}%</span>
+        <span class='badge-niv' style='background:{coul_niv};padding:3px 12px;border-radius:20px;
+            font-size:0.75rem;font-weight:600;margin-left:10px;'>{niv}</span>
+        <div style='color:#6b7280;font-size:0.85rem;margin-top:8px;'>{msg}</div>
+      </div>
+      <div style='font-weight:700;color:#1a1a2e;margin:1.4rem 0 0.5rem 0;'>Détail des 14 pathologies</div>
       <table style='width:100%;border-collapse:collapse;font-size:0.88rem;'>
         <tr style='background:#f9fafb;'>
           <th style='padding:9px 14px;text-align:left;color:#6b7280;'>Pathologie</th>
@@ -223,23 +235,23 @@ def rapport_html(positifs, ordre, est_rx):
         l'interprétation d'un médecin radiologue. La validation par un praticien qualifié est requise.
       </div>
     </div>
-    """
-    return html, ref
+    """, ref
 
 def rapport_texte(positifs, ordre, est_rx):
     d = datetime.now().strftime("%d/%m/%Y a %H:%M")
     ref = "RX-"+datetime.now().strftime("%Y%m%d-%H%M%S")
+    niv, _, msg = evaluer(ordre)
+    n1, p1 = ordre[0]
     t  = "HOPITAL UNIVERSITAIRE INTERNATIONAL CHEIKH ZAID\n"
     t += "Service d'Imagerie Medicale - Unite IA\n"
     t += "COMPTE-RENDU D'AIDE AU DIAGNOSTIC RADIOLOGIQUE\n\n"
     t += f"Reference : {ref}\nDate      : {d}\n"
     t += "Examen    : Radiographie thoracique frontale\n"
     t += "Modele IA : DenseNet121 (AUC 0.77)\n\n"
-    t += "CONCLUSION\n"
-    if positifs:
-        for n,p in positifs: t += f"  - {FR[n]} : {p*100:.1f}%\n"
-    else: t += "  Aucune anomalie au-dessus du seuil.\n"
-    t += "\nDETAIL DES 14 PATHOLOGIES\n"
+    t += "ORIENTATION PRINCIPALE\n"
+    t += f"  {FR[n1]} : {p1*100:.1f}%  [{niv}]\n"
+    t += f"  {msg}\n\n"
+    t += "DETAIL DES 14 PATHOLOGIES\n"
     for n,p in ordre: t += f"  {FR[n]:<26} {p*100:5.1f}%\n"
     t += "\nAvertissement : aide au pre-signalement. Validation par un\n"
     t += "radiologue requise. Ne constitue pas un diagnostic medical.\n"
@@ -260,11 +272,6 @@ if fichier is not None:
     ordre = sorted(zip(PATHOLOGIES, probs), key=lambda t:-t[1])
     positifs = [(n,p) for n,p in ordre if p >= SEUILS.get(n,0.5)]
 
-    r1,r2,r3 = st.columns(3)
-    r1.markdown(f"<div class='kpi'><div class='v'>{len(positifs)}</div><div class='l'>Pathologie(s) signalee(s)</div></div>", unsafe_allow_html=True)
-    r2.markdown(f"<div class='kpi'><div class='v' style='font-size:1.4rem'>{FR[ordre[0][0]]}</div><div class='l'>Suspicion principale</div></div>", unsafe_allow_html=True)
-    r3.markdown(f"<div class='kpi'><div class='v'>{ordre[0][1]*100:.0f}%</div><div class='l'>Confiance maximale</div></div>", unsafe_allow_html=True)
-
     c1,c2 = st.columns(2)
     with c1:
         st.markdown("<div class='sect'>Radiographie analysee</div>", unsafe_allow_html=True)
@@ -279,29 +286,40 @@ if fichier is not None:
         except Exception as e:
             st.image(rgb, use_container_width=True); st.warning(f"Grad-CAM: {e}")
 
-    st.markdown("<div class='sect'>Conclusion</div>", unsafe_allow_html=True)
-    if positifs:
-        for n,p in positifs:
-            st.markdown(f"<div class='carte'><span class='nom'>{FR[n]}</span>"
-                        f"<span class='pct'>{p*100:.0f}%</span></div>", unsafe_allow_html=True)
-    else:
-        st.success("✅ Aucune anomalie detectee au-dessus du seuil de confiance.")
+    # ---------- DIAGNOSTIC UNIQUE ----------
+    st.markdown("<div class='sect'>Résultat de l'analyse</div>", unsafe_allow_html=True)
+    n1, p1 = ordre[0]
+    niv, coul, msg = evaluer(ordre)
+    st.markdown(f"""
+    <div class='diag' style='background:#fff;border:1px solid #f0e6e3;border-top:5px solid {coul};
+        border-radius:18px;padding:2.4rem 2rem;text-align:center;
+        box-shadow:0 6px 28px rgba(0,0,0,0.06);'>
+      <div style='color:#6b7280 !important;font-size:0.82rem;letter-spacing:1.5px;
+          text-transform:uppercase;margin-bottom:10px;'>Orientation principale</div>
+      <div style='font-size:2.3rem;font-weight:800;color:#1a1a2e !important;margin-bottom:4px;'>{FR[n1]}</div>
+      <div class='gros' style='font-size:1.7rem;font-weight:800;color:{coul} !important;
+          margin-bottom:16px;'>{p1*100:.1f}%</div>
+      <span class='badge-niv' style='background:{coul};color:#fff !important;padding:6px 20px;
+          border-radius:20px;font-size:0.85rem;font-weight:600;'>{niv}</span>
+      <div style='color:#6b7280 !important;font-size:0.9rem;margin-top:18px;max-width:540px;
+          margin-left:auto;margin-right:auto;line-height:1.5;'>{msg}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # ---------- TOP 5 (barres personnalisees) ----------
-    st.markdown("<div class='sect'>Top 5 des probabilités</div>", unsafe_allow_html=True)
-    top5 = ""
-    for n,p in ordre[:5]:
-        larg = int(p*100)
-        coul = "#c0392b" if p>0.7 else "#e8503a" if p>=0.5 else "#f4a698"
-        top5 += (f"<div style='margin-bottom:14px;'>"
-                 f"<div style='display:flex;justify-content:space-between;margin-bottom:5px;'>"
-                 f"<span style='color:#1a1a2e;font-weight:600;font-size:0.95rem;'>{FR[n]}</span>"
-                 f"<span style='color:{coul};font-weight:700;'>{p*100:.1f}%</span></div>"
-                 f"<div style='background:#f0e6e3;border-radius:20px;height:9px;overflow:hidden;'>"
-                 f"<div style='background:linear-gradient(90deg,{coul},#f4a698);width:{larg}%;"
-                 f"height:100%;border-radius:20px;'></div></div></div>")
-    st.markdown(f"<div class='rap' style='background:#fff;border:1px solid #f0e6e3;"
-                f"border-radius:16px;padding:1.5rem;'>{top5}</div>", unsafe_allow_html=True)
+    # ---------- DETAIL REPLIABLE ----------
+    with st.expander("Voir le détail des 14 pathologies"):
+        det = ""
+        for n,p in ordre:
+            larg = int(p*100)
+            cc = "#c0392b" if p>0.7 else "#e8503a" if p>=0.5 else "#f4a698"
+            det += (f"<div style='margin-bottom:12px;'>"
+                    f"<div style='display:flex;justify-content:space-between;margin-bottom:4px;'>"
+                    f"<span style='color:#1a1a2e;font-weight:600;font-size:0.92rem;'>{FR[n]}</span>"
+                    f"<span style='color:{cc};font-weight:700;'>{p*100:.1f}%</span></div>"
+                    f"<div style='background:#f0e6e3;border-radius:20px;height:8px;overflow:hidden;'>"
+                    f"<div style='background:linear-gradient(90deg,{cc},#f4a698);width:{larg}%;"
+                    f"height:100%;border-radius:20px;'></div></div></div>")
+        st.markdown(f"<div class='rap'>{det}</div>", unsafe_allow_html=True)
 
     # ---------- COMPTE-RENDU ----------
     st.markdown("<div class='sect'>Compte-rendu médical</div>", unsafe_allow_html=True)
