@@ -158,19 +158,18 @@ def gradcam(arr, idx):
     return cv2.resize(h/(h.max()+1e-8),(IMG_SIZE,IMG_SIZE))
 
 def evaluer(ordre):
-    """Retourne (niveau, couleur, message) pour le diagnostic principal."""
     n1, p1 = ordre[0]; n2, p2 = ordre[1]
     ecart = p1 - p2
-    if p1 >= 0.70 and ecart >= 0.15:
+    if p1 >= 0.75 and ecart >= 0.15:
         return ("Suspicion élevée", "#c0392b",
                 "Une seule pathologie se détache nettement. Résultat cohérent.")
-    if p1 >= SEUILS.get(n1,0.5) and ecart >= 0.10:
+    if p1 >= 0.60 and ecart >= 0.10:
         return ("Suspicion modérée", "#e8503a",
                 "Orientation probable, à confirmer par un radiologue.")
-    if p1 >= SEUILS.get(n1,0.5):
-        return ("Résultat non discriminant", "#f39c12",
-                f"Le modèle ne tranche pas clairement : {FR[n2]} atteint {p2*100:.1f}%, "
-                f"un score proche. Lecture humaine indispensable.")
+    if p1 >= 0.45:
+        return ("Résultat incertain", "#f39c12",
+                f"Le modèle ne tranche pas clairement : plusieurs pathologies ont des "
+                f"scores proches ({FR[n2]} à {p2*100:.1f}%). Lecture humaine indispensable.")
     return ("Aucune anomalie signalée", "#27ae60",
             "Aucune pathologie au-dessus du seuil de confiance.")
 
@@ -181,10 +180,11 @@ def rapport_html(positifs, ordre, est_rx):
     n1, p1 = ordre[0]
     lignes = ""
     for n,p in ordre:
-        if p > 0.7: coul, lab = "#c0392b", "Élevée"
-        elif p >= 0.5: coul, lab = "#e8503a", "Modérée"
+        if p >= 0.75: coul, lab = "#c0392b", "Élevée"
+        elif p >= 0.60: coul, lab = "#e8503a", "Modérée"
+        elif p >= 0.45: coul, lab = "#f39c12", "Incertaine"
         else: coul, lab = "#9ca3af", "Faible"
-        signal = "background:#fdeeeb;" if p >= SEUILS.get(n,0.5) else ""
+        signal = "background:#fdeeeb;" if p >= 0.60 else ""
         lignes += (f"<tr style='{signal}'><td style='padding:9px 14px;border-bottom:1px solid #f0e6e3;"
                    f"color:#1a1a2e;font-weight:500;'>{FR[n]}</td>"
                    f"<td style='padding:9px 14px;border-bottom:1px solid #f0e6e3;text-align:right;"
@@ -270,7 +270,7 @@ if fichier is not None:
     x, rgb = preparer(pil)
     probs = model.predict(x, verbose=0)[0]
     ordre = sorted(zip(PATHOLOGIES, probs), key=lambda t:-t[1])
-    positifs = [(n,p) for n,p in ordre if p >= SEUILS.get(n,0.5)]
+    positifs = [(n,p) for n,p in ordre if p >= 0.60]
 
     c1,c2 = st.columns(2)
     with c1:
@@ -311,7 +311,7 @@ if fichier is not None:
         det = ""
         for n,p in ordre:
             larg = int(p*100)
-            cc = "#c0392b" if p>0.7 else "#e8503a" if p>=0.5 else "#f4a698"
+            cc = "#c0392b" if p>=0.75 else "#e8503a" if p>=0.60 else "#f39c12" if p>=0.45 else "#f4a698"
             det += (f"<div style='margin-bottom:12px;'>"
                     f"<div style='display:flex;justify-content:space-between;margin-bottom:4px;'>"
                     f"<span style='color:#1a1a2e;font-weight:600;font-size:0.92rem;'>{FR[n]}</span>"
